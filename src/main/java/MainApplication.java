@@ -3,51 +3,55 @@ import ij.gui.GenericDialog;
 import ij.gui.YesNoCancelDialog;
 import javafx.application.Application;
 import javafx.stage.Stage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 
-/**
- * Created by Administrateur on 2016-03-24.
- */
+
 public class MainApplication extends Application{
 
 
-    public ProjectFile projectfile;
+    public ProjectFile projectFile;
+    static final Logger LOG = LoggerFactory.getLogger(MainApplication.class);
 
-    //Main method
+
     public static void main (String[] args){
         MainApplication.launch(args);
     }
 
     @Override
-    public void start(Stage mainstage){
+    public void start(Stage mainStage){
 
-        projectfile = new ProjectFile();
-        ImageSelector selectedimage = new ImageSelector();
+        LOG.info("Starting application");
+
+        projectFile = new ProjectFile();
+        ImageSelector selectedImage = new ImageSelector();
 
         //Project creation
-        projectfile.startProject(mainstage);
+        projectFile.startProject(mainStage);
 
         //Image selection and measurements processing
-        selectedimage.openImages(projectfile, mainstage);
+        selectedImage.openImages(projectFile, mainStage);
 
         //Save file and end of analysis
-        projectfile.saveFile(mainstage);
-        endAnalysis(mainstage);
+        projectFile.saveFile(mainStage);
+        endAnalysis(mainStage);
 
     }
 
     //End of analysis dialog and end of measurements
-    public void endAnalysis(Stage mainstage) {
+    private void endAnalysis(Stage mainStage) {
         //End dialog
 
-        YesNoCancelDialog enddiag = new YesNoCancelDialog(new Frame(),"You have measured all selected images", "Do you want to continue with another folder?");
-        enddiag.setAlwaysOnTop(true);
-        if (enddiag.yesPressed()) {
-            projectfile.imagej.quit();
-            start(mainstage);
+        YesNoCancelDialog endDialog = new YesNoCancelDialog(new Frame(),"You have measured all selected images", "Do you want to continue with another folder?");
+        endDialog.setAlwaysOnTop(true);
+        if (endDialog.yesPressed()) {
+            projectFile.imageJ.quit();
+            start(mainStage);
+            LOG.info("Starting a new measurement set");
         } else {
-            projectfile.imagej.quit();
+            LOG.info("Closing Application");
             System.exit(0);
         }
 

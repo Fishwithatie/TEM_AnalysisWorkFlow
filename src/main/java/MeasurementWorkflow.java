@@ -10,311 +10,324 @@ import ij.process.EllipseFitter;
 import ij.process.ImageProcessor;
 import ij.process.ImageStatistics;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 import java.io.File;
 import java.util.Random;
 
-/**
- * Created by Administrateur on 2016-03-24.
- */
 public class MeasurementWorkflow {
 
-    public String labeledtype = "labeled";
-    public String unlabeledtype = "unlabeled";
-    public String labeledcolor = "Yellow";
-    public String unlabeledcolor = "Green";
-    public String synapsecolor = "Red";
+    Logger LOG = LoggerFactory.getLogger(MeasurementWorkflow.class);
+
+    private String labeledType = "labeled";
+    private String unlabeledType = "unlabeled";
+    private String labeledColor = "Yellow";
+    private String unlabeledColor = "Green";
+    private String synapseColor = "Red";
 
     // Process all images and go through the workflow to measure images
 
-    public void processImage(RoiManager selection, ImagePlus currentimage, File imageit, ProjectFile projectfile) {
+    /**
+     * Process an image and go through the workflow to measure it
+     * @param currentImage ImagePlus file extrated from ImageJ
+     * @param imageFile
+     * @param projectFile
+     */
+    public void processImage(ImagePlus currentImage, File imageFile, ProjectFile projectFile) {
+
+        //Create RoiManager
+        RoiManager selection = new RoiManager();
 
         //Measure labeled varicosity
-        setScale(selection, currentimage);
-        measureVaricosity(selection, currentimage, labeledtype, imageit, labeledcolor, projectfile);
-        measureSynapse(askSynapse(), selection, currentimage, labeledcolor, projectfile);
+        setScale(selection, currentImage);
+        measureVaricosity(selection, currentImage, labeledType, imageFile, labeledColor, projectFile);
+        measureSynapse(askSynapse(), selection, currentImage, labeledColor, projectFile);
 
-        placeStereologycross(currentimage);
+        placeStereologycross(currentImage);
 
         //Measure unlabeled varicosity
-        measureVaricosity(selection, currentimage, unlabeledtype, imageit, unlabeledcolor, projectfile);
-        measureSynapse(askSynapse(), selection, currentimage, unlabeledcolor, projectfile);
+        measureVaricosity(selection, currentImage, unlabeledType, imageFile, unlabeledColor, projectFile);
+        measureSynapse(askSynapse(), selection, currentImage, unlabeledColor, projectFile);
+
+       //Close ROI manager and put Rois in overlay for later visualisation
+        selection.runCommand("Save");
+        selection.moveRoisToOverlay(currentImage);
+        selection.close();
 
     }
 
     //Set scale bar in order to determine pixel value in length
-    public void setScale(RoiManager selection, ImagePlus currentimage) {
+    private void setScale(RoiManager selection, ImagePlus currentImage) {
 
-        Frame superframe = new Frame();
-        YesNoCancelDialog scalediag = new YesNoCancelDialog(superframe, "Scale bar value", "Do you need to reset the scale bar value?");
+        Frame superFrame = new Frame();
+        YesNoCancelDialog scaleDialog = new YesNoCancelDialog(superFrame, "Scale bar value", "Do you need to reset the scale bar value?");
 
-        if (scalediag.yesPressed()) {
+        if (scaleDialog.yesPressed()) {
             IJ.setTool("line");
-            WaitForUserDialog scalewaitdiag = new WaitForUserDialog("Scale bar", "Please draw a line over the scalebar");
-            scalewaitdiag.show();
+            WaitForUserDialog scaleWaitDialog = new WaitForUserDialog("Scale bar", "Please draw a line over the scalebar");
+            scaleWaitDialog.show();
 
-            selection.runCommand(currentimage, "add");
+            selection.runCommand(currentImage, "add");
             selection.select(selection.getCount()- 1);
             selection.runCommand("Rename", "Scale bar");
 
-            GenericDialog scalebarlength = new GenericDialog("What is the value of the scale bar?", superframe);
-            scalebarlength.addNumericField("Value of the scale bar(in micron)", 1, 2);
-            scalebarlength.setAlwaysOnTop(true);
-            scalebarlength.showDialog();
-            IJ.run(currentimage, "Set Scale...", "known=" + scalebarlength.getNextNumber() + " unit=micron global");
-            System.out.println("Scalebar successfully set");
+            GenericDialog scalebarLength = new GenericDialog("What is the value of the scale bar?", superFrame);
+            scalebarLength.addNumericField("Value of the scale bar(in micron)", 1, 2);
+            scalebarLength.setAlwaysOnTop(true);
+            scalebarLength.showDialog();
+            IJ.run(currentImage, "Set Scale...", "known=" + scalebarLength.getNextNumber() + " unit=micron global");
+            LOG.info("Scalebar successfully set");
         }
     }
 
     //Measure of varicosities
 
-    public void measureVaricosity(RoiManager selection, ImagePlus currentimage, String type, File image, String overlaycolor, ProjectFile projectfile)
+    private void measureVaricosity(RoiManager selection, ImagePlus currentImage, String type, File image, String overlayColor, ProjectFile projectFile)
     {
 
-        ImageProcessor ip = currentimage.getProcessor();
+        ImageProcessor ip = currentImage.getProcessor();
 
         //ask for measurements of varicosities
         IJ.setTool("freehand");
-        WaitForUserDialog waitdiag1 = new WaitForUserDialog("Action required", "Plz draw contour of " + type + " object");
-        waitdiag1.show();
-        selection.runCommand(currentimage, "Add");
+        WaitForUserDialog waitDialogCountour = new WaitForUserDialog("Action required", "Plz draw contour of " + type + " object");
+        waitDialogCountour.show();
+        selection.runCommand(currentImage, "Add");
         selection.select(selection.getCount() - 1);
         selection.runCommand("Rename", type);
         Roi varicosity = selection.getRoi(selection.getSelectedIndex());
-        selection.moveRoisToOverlay(currentimage);
+        selection.moveRoisToOverlay(currentImage);
         selection.runCommand("Measure");
-        selection.runCommand("Set Color", overlaycolor);
+        selection.runCommand("Set Color", overlayColor);
         selection.runCommand("Save");
         ip.setRoi(varicosity);
 
         //Takes input and extract measurements, long axis and short axis are calculated wih a ellipse fitter
 
-        projectfile.currentrow = projectfile.currentsheet.createRow(projectfile.currentsheet.getLastRowNum() + 1);
+        projectFile.setCurrentRow(projectFile.getCurrentSheet().createRow(projectFile.getCurrentSheet().getLastRowNum() + 1));
 
-        //Create and fill cell with filename and add it to the filename list
-        Cell currentcell = projectfile.currentrow.createCell(0);
-        currentcell.setCellType(Cell.CELL_TYPE_STRING);
-        currentcell.setCellValue(image.getName());
+        XSSFRow workingRow = projectFile.getCurrentRow();
+
+        //Create and fill cell with filename
+        createStringCell(workingRow, 0, image.getName());
 
         //Set type
-        Cell typecell = projectfile.currentrow.createCell(1);
-        typecell.setCellType(Cell.CELL_TYPE_STRING);
-        typecell.setCellValue(type);
+        createStringCell(workingRow, 1, type);
 
         //Area
-        ImageStatistics imagestats = ImageStatistics.getStatistics(ip, Measurements.MEAN, currentimage.getCalibration());
-        double labeledarea = imagestats.area;
-        Cell areacell = projectfile.currentrow.createCell(2);
-        areacell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        areacell.setCellValue(labeledarea);
+        ImageStatistics imageStats = ImageStatistics.getStatistics(ip, Measurements.MEAN, currentImage.getCalibration());
+        double labeledArea = imageStats.area;
+        createNumericCell(workingRow, 2, labeledArea);
 
         //Ellipse fitter
-        EllipseFitter labeledellipse = new EllipseFitter();
-        labeledellipse.fit(ip, imagestats);
-        labeledellipse.drawEllipse(ip);
+        EllipseFitter labeledEllipse = new EllipseFitter();
+        labeledEllipse.fit(ip, imageStats);
+        labeledEllipse.drawEllipse(ip);
         ip.createImage();
 
         //Long axis
-        double labeledellipsemajor = labeledellipse.major * currentimage.getCalibration().pixelWidth;
-        Cell majorcell = projectfile.currentrow.createCell(3);
-        majorcell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        majorcell.setCellValue(labeledellipsemajor);
+        double labeledEllipseMajor = labeledEllipse.major * currentImage.getCalibration().pixelWidth;
+        createNumericCell(workingRow, 3, labeledEllipseMajor);
 
         //Short axis
-        double labeledellipseminor = labeledellipse.minor * currentimage.getCalibration().pixelWidth;
-        Cell minorcell = projectfile.currentrow.createCell(4);
-        minorcell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        minorcell.setCellValue(labeledellipseminor);
+        double labeledEllipseMinor = labeledEllipse.minor * currentImage.getCalibration().pixelWidth;
+        createNumericCell(workingRow, 4, labeledEllipseMinor);
 
         //Aspect Ratio
-        Cell aspectratiocell = projectfile.currentrow.createCell(5);
-        aspectratiocell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        aspectratiocell.setCellValue(labeledellipseminor / labeledellipsemajor);
+        createNumericCell(workingRow, 5, labeledEllipseMinor / labeledEllipseMajor);
 
         //Diameter
-        Cell diametercell = projectfile.currentrow.createCell(6);
-        diametercell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        diametercell.setCellValue((labeledellipsemajor + labeledellipseminor) / 2 );
+        createNumericCell(workingRow, 6, (labeledEllipseMajor + labeledEllipseMinor) / 2);
 
         //Mitochondria
-        Cell mitocell = projectfile.currentrow.createCell(7);
-        mitocell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        mitocell.setCellValue(askMitochondria());
+        createNumericCell(workingRow, 7, askMitochondria());
 
     }
 
     //Ask number of mitochondria present on the current measured varicosity
-    public double askMitochondria() {
+    private double askMitochondria() {
 
-        GenericDialog mitodiag = new GenericDialog("Please enter the number of mitochondria");
-        mitodiag.addNumericField("Please enter the number of mitochondria", 0, 2);
-        mitodiag.showDialog();
+        GenericDialog mitochondriaDialog = new GenericDialog("Please enter the number of mitochondria");
+        mitochondriaDialog.addNumericField("Please enter the number of mitochondria", 0, 2);
+        mitochondriaDialog.showDialog();
 
-        return mitodiag.getNextNumber();
+        return mitochondriaDialog.getNextNumber();
     }
 
     //Ask if there is any synapse and how many synapse on the image
-    public double askSynapse() {
+    private double askSynapse() {
 
-        Frame superframe = new Frame();
-        YesNoCancelDialog gd = new YesNoCancelDialog(superframe, "Any synapse?", "Any synapse?");
-        gd.setAlwaysOnTop(true);
-        double synapsenum;
+        Frame superFrame = new Frame();
+        YesNoCancelDialog synapseDialog = new YesNoCancelDialog(superFrame, "Any synapse?", "Any synapse?");
+        synapseDialog.setAlwaysOnTop(true);
+        double synapseNumber;
 
-        if (gd.yesPressed()) {
+        if (synapseDialog.yesPressed()) {
             GenericDialog gd1 = new GenericDialog("How many?");
             gd1.addNumericField("Number of synapse...", 1, 0);
             gd1.showDialog();
-            synapsenum = gd1.getNextNumber();
+            synapseNumber = gd1.getNextNumber();
 
         } else {
-            synapsenum = 0;
+            synapseNumber = 0;
         }
 
-        return synapsenum;
+        return synapseNumber;
     }
 
     //Measure synapse and its target on the image
-    public void measureSynapse(double synapsenum, RoiManager selection, ImagePlus currentimage, String overlaycolor, ProjectFile projectfile) {
+    private void measureSynapse(double synapseNumber, RoiManager selection, ImagePlus currentImage, String overlayColor, ProjectFile projectFile) {
 
         //Loop for number of synapse = number of measured synapse
 
-        ImageProcessor ip = currentimage.getProcessor();
+        ImageProcessor ip = currentImage.getProcessor();
 
-        for (int i = (int) synapsenum; i > 0; i--) {
+        for (int i = (int) synapseNumber; i > 0; i--) {
             IJ.setTool("line");
-            WaitForUserDialog waitdiagsynapse = new WaitForUserDialog("Please measure synapse number " + i + " with line tool");
-            waitdiagsynapse.show();
-            selection.runCommand(currentimage, "add");
+            WaitForUserDialog waitDialogSynapse = new WaitForUserDialog("Please measure synapse number " + i + " with line tool");
+            waitDialogSynapse.show();
+            selection.runCommand(currentImage, "add");
             selection.select(selection.getCount() - 1);
             selection.runCommand("Rename", "Synapse " + i);
 
             //Get length value of synapse
 
-            if (projectfile.currentrow.getCell(8) != null) {
-                projectfile.currentrow = projectfile.currentsheet.createRow(projectfile.currentsheet.getLastRowNum() + 1);
+            if (projectFile.getCurrentRow().getCell(8) != null) {
 
-                Cell filenamecell = projectfile.currentrow.createCell(0);
-                filenamecell.setCellType(Cell.CELL_TYPE_STRING);
-                Cell previousfilenamecell = projectfile.currentsheet.getRow(projectfile.currentsheet.getLastRowNum() - 1).getCell(0);
-                filenamecell.setCellValue(previousfilenamecell.getStringCellValue());
+                projectFile.setCurrentRow(projectFile.getCurrentSheet().createRow(projectFile.getCurrentSheet().getLastRowNum() + 1));
 
-                Cell vartypecell = projectfile.currentrow.createCell(1);
-                vartypecell.setCellType(Cell.CELL_TYPE_STRING);
-                Cell previousvartypecell = projectfile.currentsheet.getRow(projectfile.currentsheet.getLastRowNum() - 1).getCell(1);
-                vartypecell.setCellValue(previousvartypecell.getStringCellValue());
+                Cell previousFilenameCell = projectFile.getCurrentSheet().getRow(projectFile.getCurrentSheet().getLastRowNum() - 1).getCell(0);
+                createStringCell(projectFile.getCurrentRow(), 0, previousFilenameCell.getStringCellValue());
+
+                Cell previousVaricosityTypeCell = projectFile.getCurrentSheet().getRow(projectFile.getCurrentSheet().getLastRowNum() - 1).getCell(1);
+                createStringCell(projectFile.getCurrentRow(), 1, previousVaricosityTypeCell.getStringCellValue());
             }
 
             Roi synapse = selection.getRoi(selection.getCount() - 1);
-            double synapselength = synapse.getLength() * currentimage.getCalibration().pixelWidth;
+            double synapseLength = synapse.getLength() * currentImage.getCalibration().pixelWidth;
 
             selection.runCommand("Measure");
-            selection.runCommand("Set Color", synapsecolor);
+            selection.runCommand("Set Color", synapseColor);
             selection.runCommand("Save");
-            selection.moveRoisToOverlay(currentimage);
+            selection.moveRoisToOverlay(currentImage);
 
-            Cell synapselengthcell = projectfile.currentrow.createCell(8);
-            synapselengthcell.setCellType(Cell.CELL_TYPE_NUMERIC);
-            synapselengthcell.setCellValue(synapselength);
+            createNumericCell(projectFile.getCurrentRow(), 8, synapseLength);
 
             //Ask synapse type
 
-            String[] synapsetypelist = new String[3];
-            synapsetypelist[0] = "Asymmetric";
-            synapsetypelist[1] = "Symmetric";
-            synapsetypelist[2] = "Unknown";
+            String[] synapseTypeList = new String[3];
+            synapseTypeList[0] = "Asymmetric";
+            synapseTypeList[1] = "Symmetric";
+            synapseTypeList[2] = "Unknown";
 
-            GenericDialog synapsetypediag = new GenericDialog("Synapse type?");
-            synapsetypediag.addChoice("Synapse type?", synapsetypelist, "Asymmetric");
-            synapsetypediag.showDialog();
-            String synapsetype = synapsetypediag.getNextChoice();
+            GenericDialog synapseTypeDialog = new GenericDialog("Synapse type?");
+            synapseTypeDialog.addChoice("Synapse type?", synapseTypeList, "Asymmetric");
+            synapseTypeDialog.showDialog();
+            String synapseType = synapseTypeDialog.getNextChoice();
 
-            Cell synapsetypecell = projectfile.currentrow.createCell(9);
-            synapsetypecell.setCellType(Cell.CELL_TYPE_STRING);
-            synapsetypecell.setCellValue(synapsetype);
+            createStringCell(projectFile.getCurrentRow(), 9, synapseType);
 
             //Ask target type
 
-            GenericDialog syntargettype = new GenericDialog("Type of target?");
+            GenericDialog synapseTargetType = new GenericDialog("Type of target?");
 
-            String[] targettypelist = new String[5];
-            targettypelist[0] = "Spine";
-            targettypelist[1] = "Dendrite";
-            targettypelist[2] = "Cell body";
-            targettypelist[3] = "Axon";
-            targettypelist[4] = "Unknown";
+            String[] targetTypeList = new String[5];
+            targetTypeList[0] = "Spine";
+            targetTypeList[1] = "Dendrite";
+            targetTypeList[2] = "Cell body";
+            targetTypeList[3] = "Axon";
+            targetTypeList[4] = "Unknown";
 
 
-            syntargettype.addChoice("Type of target?", targettypelist, "Spine");
-            syntargettype.showDialog();
-            String targetype = syntargettype.getNextChoice();
+            synapseTargetType.addChoice("Type of target?", targetTypeList, "Spine");
+            synapseTargetType.showDialog();
+            String targetype = synapseTargetType.getNextChoice();
 
-            Cell targettypecell = projectfile.currentrow.createCell(10);
-            targettypecell.setCellType(Cell.CELL_TYPE_STRING);
-            targettypecell.setCellValue(targetype);
+            createStringCell(projectFile.getCurrentRow(), 10, targetype);
 
             //Get target measures
 
             IJ.setTool("freehand");
             WaitForUserDialog waittargetmeasure = new WaitForUserDialog("Please measure target of synapse " + i + " with freehand tool");
             waittargetmeasure.show();
-            selection.runCommand(currentimage, "add");
+            selection.runCommand(currentImage, "add");
             selection.select(selection.getCount() - 1);
-            selection.runCommand("Set Color", overlaycolor);
+            selection.runCommand("Set Color", overlayColor);
             selection.runCommand("Save");
 
-            ImageStatistics targetstats = ImageStatistics.getStatistics(ip, Measurements.MEAN, currentimage.getCalibration());
+            ImageStatistics targetstats = ImageStatistics.getStatistics(ip, Measurements.MEAN, currentImage.getCalibration());
 
-            double targetdarea = targetstats.area;
+            double targetArea = targetstats.area;
+            createNumericCell(projectFile.getCurrentRow(), 11, targetArea);
 
-            Cell targetareacell = projectfile.currentrow.createCell(11);
-            targetareacell.setCellType(Cell.CELL_TYPE_NUMERIC);
-            targetareacell.setCellValue(targetdarea);
-
-            EllipseFitter targetellipse = new EllipseFitter();
-            targetellipse.fit(ip, targetstats);
-            targetellipse.drawEllipse(ip);
+            EllipseFitter targetEllipse = new EllipseFitter();
+            targetEllipse.fit(ip, targetstats);
+            targetEllipse.drawEllipse(ip);
 
             //Long axis
-            double targetellipsemajor = targetellipse.major * currentimage.getCalibration().pixelWidth;
-            Cell majorcell = projectfile.currentrow.createCell(12);
-            majorcell.setCellType(Cell.CELL_TYPE_NUMERIC);
-            majorcell.setCellValue(targetellipsemajor);
+            double targetEllipseMajor = targetEllipse.major * currentImage.getCalibration().pixelWidth;
+            createNumericCell(projectFile.getCurrentRow(), 12, targetEllipseMajor);
 
             //Short axis
-            double targetellipseminor = targetellipse.minor * currentimage.getCalibration().pixelWidth;
-            Cell minorcell = projectfile.currentrow.createCell(13);
-            minorcell.setCellType(Cell.CELL_TYPE_NUMERIC);
-            minorcell.setCellValue(targetellipseminor);
+            double targetEllipseMinor = targetEllipse.minor * currentImage.getCalibration().pixelWidth;
+            createNumericCell(projectFile.getCurrentRow(), 13, targetEllipseMinor);
 
             //Diameter
-            Cell diametertargetcell = projectfile.currentrow.createCell(14);
-            diametertargetcell.setCellType(Cell.CELL_TYPE_NUMERIC);
-            diametertargetcell.setCellValue((targetellipsemajor + targetellipseminor) / 2);
+            Cell diameterTargetCell = projectFile.getCurrentRow().createCell(14);
+            createNumericCell(projectFile.getCurrentRow(), 14, (targetEllipseMajor + targetEllipseMinor) / 2);
 
             ip.createImage();
-            System.out.println("Traced synapse and target successfully measured");
+            LOG.info("Traced synapse and target successfully measured");
         }
+
 
 
     }
 
     //Places a random marker on the image to identify unlabeled varicosity
-    public void placeStereologycross (ImagePlus currentimage) {
+    private void placeStereologycross (ImagePlus currentImage) {
 
-        int imagewidth = currentimage.getWidth();
-        int imageheigth = currentimage.getHeight();
+        int imageWidth = currentImage.getWidth();
+        int imageHeigth = currentImage.getHeight();
 
-        Random coordinategenerator = new Random();
+        Random coordinateGenerator = new Random();
 
-        Roi stereorectangle = new Roi(coordinategenerator.nextInt(imagewidth), coordinategenerator.nextInt(imageheigth), 50, 50);
-        stereorectangle.setFillColor(Color.RED);
-        stereorectangle.setStrokeColor(Color.RED);
+        Roi stereoRectangle = new Roi(coordinateGenerator.nextInt(imageWidth), coordinateGenerator.nextInt(imageHeigth), 50, 50);
+        stereoRectangle.setFillColor(Color.RED);
+        stereoRectangle.setStrokeColor(Color.RED);
 
-        currentimage.setRoi(stereorectangle);
+        currentImage.setRoi(stereoRectangle);
 
 
+
+    }
+
+    /**
+     * Create a numeric cell at a specified row and column index with a determined value
+     * @param workingRow Current row where data need to be entered
+     * @param columnIndex Current column where cell need to be created
+     * @param value User-determined value for the cell
+     */
+    private void createNumericCell(XSSFRow workingRow, int columnIndex, double value) {
+
+        Cell currentCell = workingRow.createCell(columnIndex);
+        currentCell.setCellType(Cell.CELL_TYPE_NUMERIC);
+        currentCell.setCellValue(value);
+    }
+
+    /**
+     * Create a string cell at a specified row and column index with a determined value
+     * @param workingRow Current row where data need to be entered
+     * @param columnIndex Current column where cell need to be created
+     * @param value User-determined value for the cell
+     */
+    private void createStringCell(XSSFRow workingRow, int columnIndex, String value) {
+
+        Cell currentCell = workingRow.createCell(columnIndex);
+        currentCell.setCellType(Cell.CELL_TYPE_STRING);
+        currentCell.setCellValue(value);
 
     }
 

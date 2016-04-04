@@ -49,9 +49,3 @@ add for a noob in programming like me.
     - [ ] Look at current excel workbook button
     - [ ] Help button (opens read me or other docs)
 
-# GUI issues personal notes <h2>
-
-* On hold, can't seem to be able to correctly launch imagej inside a JavaFX application.
-* Each time a dialog is launched by imagej it seems to crash
-* Workflow heavily relies on those IJ.dialog to work properly, migration of the whole code to javaFX dialog would probably fix the issue
-* This issue will be resolved in the next version... (hopefully)
