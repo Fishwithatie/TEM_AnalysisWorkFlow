@@ -40,10 +40,10 @@ add for a noob in programming like me.
 - [x] Working measurements workflow of TEM images
 - [x] Load and save measurements in excel format
 - [x] Save a copy of measured image with overlays in another folder
-- [ ] Automatic calculation of mean value for the project (probably placed in another sheet)
-- [ ] Automatic calculation of synaptic incidence with formula from [Beaudet and Sotelo (1981)](http://www.ncbi.nlm.nih.gov/pubmed/7214137) 
-- [ ] Create a working GUI in javaFX (some issues with integration of imageJ inside a JavaFX application)
-    - [ ] Exit button 
+- [x] Automatic calculation of mean value for the project (probably placed in another sheet)
+- [x] Automatic calculation of synaptic incidence with formula from [Beaudet and Sotelo (1981)](http://www.ncbi.nlm.nih.gov/pubmed/7214137) 
+- [x] Create a working GUI in javaFX (some issues with integration of imageJ inside a JavaFX application)
+    - [x] Exit button 
     - [ ] Return to previous image button
     - [ ] Live count display of measured images in the 
     - [ ] Look at current excel workbook button
